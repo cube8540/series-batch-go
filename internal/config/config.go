@@ -10,9 +10,9 @@ import (
 )
 
 type Config struct {
-	Gemini gemini.Config `json:"gemini"`
-	DB     db.Config     `json:"db"`
-	Logger log.Config    `json:"logger"`
+	Gemini *gemini.Config `json:"gemini"`
+	DB     *db.Config     `json:"db"`
+	Logger *log.Config    `json:"logger"`
 }
 
 func Read() *Config {

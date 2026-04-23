@@ -29,13 +29,36 @@ const (
 	JobStatusCompleted JobStatus = "COMPLETED"
 )
 
+func NewJobStatus(s string) JobStatus {
+	switch s {
+	case "UNDEFINED":
+		return JobStatusUndefined
+	case "PENDING":
+		return JobStatusPending
+	case "RUNNING":
+		return JobStatusRunning
+	case "CANCELED":
+		return JobStatusCanceled
+	case "FAILED":
+		return JobStatusFailed
+	case "DONE":
+		return JobStatusDone
+	case "RETRY":
+		return JobStatusRetry
+	case "COMPLETED":
+		return JobStatusCompleted
+	default:
+		return JobStatus(s)
+	}
+}
+
 // SeriesNormalizeRequest 도서 시리즈 일반화 요청
 type SeriesNormalizeRequest struct {
 	// Title 일반화를 요청할 도서의 제목
 	Title string
 
 	// SaleInfo 사이트별 도서 판매 정보
-	SaleInfo []SiteSaleInfo
+	SaleInfo []*SiteSaleInfo
 }
 
 // SiteSaleInfo 도서 판매 정보

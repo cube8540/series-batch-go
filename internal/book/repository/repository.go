@@ -4,6 +4,7 @@ import (
 	"context"
 	"gorm.io/gorm"
 	"series-batch-go/internal/config/log"
+	"series-batch-go/internal/pkg/structs"
 )
 
 var (
@@ -45,10 +46,36 @@ func FindSeriesByISBN(ctx context.Context, db *gorm.DB, ISBN ...string) []*Serie
 	return entities
 }
 
-func FindSeriesByFullTextSearch(ctx context.Context, db *gorm.DB, name string) []*SeriesEntity {
-	var entities []*SeriesEntity
-	if err := db.WithContext(ctx).Debug().Where("name_full_text LIKE ?", "%"+name+"%").Find(&entities).Error; err != nil {
+func FindSeriesByFullTextSearch(ctx context.Context, db *gorm.DB, name string) []*structs.Pair[*SeriesEntity, float32] {
+	type seriesFullTextSearch struct {
+		ID           uint
+		ISBN         string
+		Name         string
+		NameFullText string
+		Score        float32
+	}
+
+	var res []*seriesFullTextSearch
+	err := db.WithContext(ctx).Model(&seriesFullTextSearch{}).
+		Select("id, isbn, name, name_full_text, bigm_similarity(name, ?) as score", name).
+		Where("name_full_text LIKE =% ?", name).
+		Order("score DESC").
+		Find(&res)
+
+	if err != nil {
 		log.Sugared().Errorf("error occurred when finding series(%v): %v", name, err)
 	}
-	return entities
+
+	var results []*structs.Pair[*SeriesEntity, float32]
+	for _, r := range res {
+		entity := &SeriesEntity{
+			ID:           r.ID,
+			ISBN:         r.ISBN,
+			Name:         r.Name,
+			NameFullText: r.NameFullText,
+		}
+		results = append(results, structs.NewPair(entity, r.Score))
+	}
+
+	return results
 }

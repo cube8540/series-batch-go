@@ -87,8 +87,7 @@ func (c *Client) GetSeriesNormalizeBatch(ctx context.Context, jobName string) (l
 	if batch.State == genai.JobStateSucceeded {
 		for _, in := range batch.Dest.InlinedResponses {
 			var r llm.SeriesNormalizeResponse
-			text := in.Response.Text()
-			if err := json.Unmarshal([]byte(text), &r); err != nil {
+			if err := json.Unmarshal([]byte(in.Response.Text()), &r); err != nil {
 				return "", nil, err
 			}
 			res = append(res, &r)

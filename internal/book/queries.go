@@ -4,6 +4,7 @@ import (
 	"context"
 	"gorm.io/gorm"
 	"series-batch-go/internal/book/repository"
+	"series-batch-go/internal/pkg/structs"
 )
 
 type Repository struct {
@@ -57,13 +58,16 @@ func (r *SeriesRepository) FindSeriesByISBN(ctx context.Context, ISBN ...string)
 	return series
 }
 
-func (r *SeriesRepository) FindSeriesByFullTextSearch(ctx context.Context, name string) []*Series {
-	entities := repository.FindSeriesByFullTextSearch(ctx, r.db, PrepareSeriesNameForSearch(name))
-	var series []*Series
-	for _, entity := range entities {
-		series = append(series, ConvertSeriesEntityToDomain(entity))
+func (r *SeriesRepository) FindSeriesByFullTextSearch(ctx context.Context, name string) []*structs.Pair[*Series, float32] {
+	search := repository.FindSeriesByFullTextSearch(ctx, r.db, PrepareSeriesNameForSearch(name))
+
+	var result []*structs.Pair[*Series, float32]
+	for _, r := range search {
+		series := ConvertSeriesEntityToDomain(r.First)
+		result = append(result, structs.NewPair(series, r.Second))
 	}
-	return series
+
+	return result
 }
 
 func ConvertBookEntityToDomain(entity *repository.BookEntity) *Book {

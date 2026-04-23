@@ -23,23 +23,8 @@
    - "Y": 해당 장의 회차로 회차로 구분되어야 합니다.
    - "Z": 회차별 타이틀로 회차로 구분되어야 합니다.
 
-## 출력
-시리즈 제목과 제거된 노이즈, 노이즈별 제거 사유를 아래와 같이 출력하세요.
 
-### 출력 예시
-아래와 같은 Json 구조를 출력하세요.
-```json
-{
-   "title": "시리즈명",
-   "noise": [{
-      "text": "제거된 노이즈 1",
-      "reason": "노이즈 제거 사유 1"
-   }, {
-      "text": "제거된 노이즈 2",
-      "reason": "노이즈 제거 사유 2"
-   }]
-}
+출력은 다음 스키마를 만족하도록 포멧팅된 JSON 오브젝트로 출력하세요.
 ```
-- "title" 필드는 반드시 포함하세요.
-- "noise" 필드는 제거된 노이즈가 있을 경우 반드시 포함하세요.
-- "noise" 필드 포함시 "text"와 "reason" 필드를 반드시 포함하세요.
+{"$defs":{"noise":{"properties":{"text":{"description":"제거된 노이즈","title":"text","type":"string"},"reason":{"description":"노이즈 제거 사유","title":"reason","type":"string"}},"required":["text","reason"],"title":"noise","type":"object"}},"properties":{"title":{"description":"시리즈명","title":"title","type":"string"},"noise":{"description":"제거된 노이즈 목록","items":{"$ref":"#/$defs/noise"},"title":"noise","type":"array"}},"required":["title"]}
+```

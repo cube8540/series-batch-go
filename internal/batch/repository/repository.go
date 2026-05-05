@@ -17,7 +17,7 @@ func FindBatchByStatus(ctx context.Context, db *gorm.DB, limit int, s ...string)
 }
 
 func SaveBatch(ctx context.Context, db *gorm.DB, batch []*BatchEntity) error {
-	result := db.WithContext(ctx).Create(batch)
+	result := db.WithContext(ctx).Create(&batch)
 	if result.Error != nil {
 		return fmt.Errorf("error occurred when saving batch: %v", result.Error)
 	}

@@ -42,6 +42,14 @@ func NewSeriesNormalizationBatch(ID string, state llm.JobStatus) *Batch {
 	}
 }
 
+func (b *Batch) GetTargetID() []uint {
+	var ID []uint
+	for _, t := range b.Targets {
+		ID = append(ID, t.BookID)
+	}
+	return ID
+}
+
 type Target struct {
 	BookID    uint
 	RequestID string

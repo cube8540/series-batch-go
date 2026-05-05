@@ -3,8 +3,9 @@ package gemini
 import (
 	"context"
 	"encoding/json"
-	"google.golang.org/genai"
 	"series-batch-go/internal/pkg/llm"
+
+	"google.golang.org/genai"
 )
 
 type Client struct {
@@ -80,15 +81,16 @@ func (c *Client) RunSeriesNormalizeBatch(ctx context.Context, displayName string
 func (c *Client) GetSeriesNormalizeBatch(ctx context.Context, jobName string) (llm.JobStatus, []*llm.SeriesNormalizeResponse, error) {
 	batch, err := c.client.Batches.Get(ctx, jobName, nil)
 	if err != nil {
-		return "", nil, err
+		return llm.JobStatusFailed, nil, err
 	}
 
 	var res []*llm.SeriesNormalizeResponse
 	if batch.State == genai.JobStateSucceeded {
 		for _, in := range batch.Dest.InlinedResponses {
+			text := in.Response.Text()
 			var r llm.SeriesNormalizeResponse
-			if err := json.Unmarshal([]byte(in.Response.Text()), &r); err != nil {
-				return "", nil, err
+			if err := json.Unmarshal([]byte(text), &r); err != nil {
+				return llm.JobStatusFailed, nil, err
 			}
 			res = append(res, &r)
 		}

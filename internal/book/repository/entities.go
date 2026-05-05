@@ -25,7 +25,7 @@ func (e BookOriginalDataEntity) TableName() string {
 
 type SeriesEntity struct {
 	ID           uint
-	ISBN         string
+	ISBN         *string
 	Name         string
 	NameFullText string
 }

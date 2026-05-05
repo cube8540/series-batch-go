@@ -5,19 +5,40 @@ import (
 	"gorm.io/gorm"
 	"series-batch-go/internal/book/repository"
 	"series-batch-go/internal/pkg/structs"
+	"slices"
 )
 
 type Repository struct {
 	db *gorm.DB
+
+	BatchSize int
 }
 
 func NewRepository(db *gorm.DB) *Repository {
-	return &Repository{db: db}
+	return &Repository{db: db, BatchSize: 100}
+}
+
+func (r *Repository) FindByID(ctx context.Context, ID ...uint) []*Book {
+	var books []*Book
+	for chunk := range slices.Chunk(ID, r.BatchSize) {
+		entities := repository.FindBookByID(ctx, r.db, chunk...)
+		b := r.fillOriginalData(ctx, entities)
+
+		books = append(books, b...)
+	}
+	return books
 }
 
 func (r *Repository) FindUnorganizedBooks(ctx context.Context, limit int) []*Book {
 	entities := repository.FindUnorganizedBooks(ctx, r.db, limit)
+	return r.fillOriginalData(ctx, entities)
+}
 
+func (r *Repository) UpdateBookSeries(ctx context.Context, ID uint, seriesID uint) error {
+	return repository.UpdateBookSeries(ctx, r.db, ID, seriesID)
+}
+
+func (r *Repository) fillOriginalData(ctx context.Context, entities []*repository.BookEntity) []*Book {
 	var (
 		ID    []uint
 		books []*Book
@@ -68,6 +89,25 @@ func (r *SeriesRepository) FindSeriesByFullTextSearch(ctx context.Context, name 
 	}
 
 	return result
+}
+
+func (r *SeriesRepository) SaveSeries(ctx context.Context, series []*Series) ([]*Series, error) {
+	var entities []*repository.SeriesEntity
+	for _, s := range series {
+		entities = append(entities, &repository.SeriesEntity{
+			ISBN:         s.ISBN,
+			Name:         s.Name,
+			NameFullText: PrepareSeriesNameForSearch(s.Name),
+		})
+	}
+	if err := repository.SaveSeries(ctx, r.db, entities); err != nil {
+		return nil, err
+	}
+	var result []*Series
+	for _, e := range entities {
+		result = append(result, ConvertSeriesEntityToDomain(e))
+	}
+	return result, nil
 }
 
 func ConvertBookEntityToDomain(entity *repository.BookEntity) *Book {

@@ -36,7 +36,7 @@ func (r *Repository) FindBatchByStatus(ctx context.Context, limit int, status ..
 	return result
 }
 
-func (r *Repository) SaveBatch(ctx context.Context, batches []*Batch) error {
+func (r *Repository) SaveBatch(ctx context.Context, batches []*Batch) ([]*Batch, error) {
 	var entities []*repository.BatchEntity
 	for _, b := range batches {
 		entity := &repository.BatchEntity{
@@ -53,7 +53,18 @@ func (r *Repository) SaveBatch(ctx context.Context, batches []*Batch) error {
 		}
 		entities = append(entities, entity)
 	}
-	return repository.SaveBatch(ctx, r.db, entities)
+	if err := repository.SaveBatch(ctx, r.db, entities); err != nil {
+		return nil, err
+	}
+	var result []*Batch
+	for _, e := range entities {
+		batch := ConvertBatchEntityToDomain(e)
+		for _, t := range e.Targets {
+			batch.Targets = append(batch.Targets, ConvertTargetEntityToDomain(&t))
+		}
+		result = append(result, batch)
+	}
+	return result, nil
 }
 
 func (r *Repository) UpdateBatchStatus(ctx context.Context, ID uint, status llm.JobStatus) error {

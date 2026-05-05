@@ -46,7 +46,7 @@ type Book struct {
 
 type Series struct {
 	ID   uint
-	ISBN string
+	ISBN *string
 	Name string
 }
 
@@ -67,7 +67,7 @@ const (
 	OriginalKeyPrice       = OriginalKey("price")
 	OriginalKeyDescription = OriginalKey("description")
 
-	OriginalKeySeriesList = "series"
+	OriginalKeySeriesList = "mapper"
 )
 
 type OriginalKeyMapper struct {

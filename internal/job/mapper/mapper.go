@@ -7,6 +7,7 @@ import (
 	"series-batch-go/internal/book"
 	"series-batch-go/internal/config/log"
 	"series-batch-go/internal/gemini"
+	"series-batch-go/internal/pkg/collections"
 	"series-batch-go/internal/pkg/llm"
 	"series-batch-go/internal/pkg/structs"
 )
@@ -46,17 +47,24 @@ func (r *Reader) Read(ctx context.Context, _ map[string]string) []*ReadItem {
 	batches := r.batchRepository.FindBatchByStatus(ctx, r.limit, llm.JobStatusDone)
 
 	var items []*ReadItem
-	for _, bt := range batches {
-		_, batchResults, err := r.geminiClient.GetSeriesNormalizeBatch(ctx, bt.ExternalID)
+	for _, btc := range batches {
+		_, batchResults, err := r.geminiClient.GetSeriesNormalizeBatch(ctx, btc.ExternalID)
 		if err != nil {
 			log.Sugared().Errorf("error occurred when getting mapper normalize batch: %v", err)
 		}
 
-		for i, batchResult := range batchResults {
-			items = append(items, &ReadItem{
-				BatchID: bt.ID,
-				Pair:    structs.NewPair(bt.Targets[i].BookID, batchResult.Title),
+		for _, batchResult := range batchResults {
+			idx := collections.Find(btc.Targets, func(e batch.Target) bool {
+				return e.RequestID == batchResult.Key
 			})
+			if idx > -1 {
+				items = append(items, &ReadItem{
+					BatchID: btc.ID,
+					Pair:    structs.NewPair(btc.Targets[idx].BookID, batchResult.Response.Title),
+				})
+			} else {
+				log.Sugared().Errorf("(%d) batch result not found: %s", btc.ID, batchResult.Key)
+			}
 		}
 	}
 	return items
@@ -136,7 +144,7 @@ func (w *Writer) Write(ctx context.Context, items []*ProcessItem) error {
 
 	var errs []error
 	for id, _ := range batchID {
-		if err := w.batchRepository.UpdateBatchStatus(ctx, id, llm.JobStatusDone); err != nil {
+		if err := w.batchRepository.UpdateBatchStatus(ctx, id, llm.JobStatusCompleted); err != nil {
 			errs = append(errs, err)
 		}
 	}

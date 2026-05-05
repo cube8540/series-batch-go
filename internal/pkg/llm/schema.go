@@ -79,6 +79,11 @@ type SiteSaleInfo struct {
 	Series []string
 }
 
+type SeriesNormalizeBatchResult struct {
+	Key      string
+	Response SeriesNormalizeResponse
+}
+
 type SeriesNormalizeResponse struct {
 	Title string
 	Noise []*SeriesNormalizeNoise

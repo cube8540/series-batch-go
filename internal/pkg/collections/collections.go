@@ -16,3 +16,11 @@ func MapAllValues[K comparable, V any](m map[K]V) []V {
 	}
 	return values
 }
+
+func ToAnySlices[T any](slice []T) []any {
+	var result []any
+	for _, v := range slice {
+		result = append(result, v)
+	}
+	return result
+}

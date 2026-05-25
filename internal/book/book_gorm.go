@@ -44,7 +44,7 @@ func (repo *GormRepository) Update(ctx context.Context, book *Book) error {
 		entity.SeriesID = &book.Series.ID
 	}
 
-	_, err := gorm.G[bookEntity](repo.db).Where("id = ?", entity.ID).Updates(ctx, entity)
+	_, err := gorm.G[bookEntity](repo.db).Select("*").Updates(ctx, entity)
 	return err
 }
 
@@ -112,16 +112,14 @@ func (repo *SeriesGormRepository) Save(ctx context.Context, series []*Series) ([
 		})
 	}
 
-	saved := repo.db.WithContext(ctx).Create(&entities)
-	if saved.Error != nil {
-		return nil, saved.Error
+	if result := repo.db.WithContext(ctx).Create(&entities); result.Error != nil {
+		return nil, result.Error
 	}
 
-	var result []*Series
-	for _, entity := range entities {
-		result = append(result, entity.domain())
+	for i, entity := range entities {
+		series[i].ID = entity.ID
 	}
-	return result, nil
+	return series, nil
 }
 
 func (repo *SeriesGormRepository) TitleFullTextSearch(ctx context.Context, query string) []*structs.Pair[*Series, float32] {
@@ -135,8 +133,8 @@ func (repo *SeriesGormRepository) TitleFullTextSearch(ctx context.Context, query
 
 	var resp []*seriesFullTextSearch
 	selected := repo.db.WithContext(ctx).Model(&seriesEntity{}).
-		Select("id, isbn, name, name_full_text, bigm_similarity(name_full_text, ?) as score", query).
-		Where("name_full_text =% ?", query).
+		Select("id, isbn, name, name_full_text, bigm_similarity(name_full_text, ?) as score", PrepareSeriesNameForSearch(query)).
+		Where("name_full_text =% ?", PrepareSeriesNameForSearch(query)).
 		Order("score DESC").
 		Find(&resp)
 

@@ -36,7 +36,7 @@ func (reader *SeriesMappingReader) SetLimit(limit int) {
 
 type Mapped struct {
 	batch *Batch
-	pair  *structs.Pair[*book.Book, *book.Series]
+	pair  *structs.Pair[*book.Book, string]
 }
 
 func (reader *SeriesMappingReader) Read(ctx context.Context, _ schedule.JobParameter) ([]*Mapped, error) {
@@ -61,34 +61,7 @@ func (reader *SeriesMappingReader) Read(ctx context.Context, _ schedule.JobParam
 			})
 			if idx > -1 {
 				bok, normalizedTitle := bookMap[batch.Targets[idx].BookID], batchResult.Response.Title
-
-				var seriesISBN string
-				var matchedSeries *book.Series
-
-				mapper, _ := book.NewOriginalKeyMapper(book.SiteNLGO)
-				if isbnAny, ok := mapper.Get(bok.OriginalData[book.SiteNLGO], book.OriginalKeySeriesISBN); ok {
-					seriesISBN = isbnAny.(string)
-					if series := reader.seriesRepository.Get(ctx, seriesISBN); len(series) > 0 {
-						matchedSeries = series[0]
-					}
-				}
-
-				if matchedSeries == nil {
-					series := reader.seriesRepository.TitleFullTextSearch(ctx, normalizedTitle)
-					if len(series) > 0 {
-						matchedSeries = series[0].First
-					}
-				}
-
-				if matchedSeries == nil {
-					if seriesISBN != "" {
-						matchedSeries = &book.Series{ISBN: &seriesISBN, Name: normalizedTitle}
-					} else {
-						matchedSeries = &book.Series{Name: normalizedTitle}
-					}
-				}
-
-				mapped = append(mapped, &Mapped{batch: batch, pair: structs.NewPair(bok, matchedSeries)})
+				mapped = append(mapped, &Mapped{batch: batch, pair: structs.NewPair(bok, normalizedTitle)})
 			} else {
 				return nil, fmt.Errorf("(%d) batch result not found: %s", batch.ID, batchResult.Key)
 			}
@@ -114,45 +87,55 @@ func NewSeriesMappingWriter(batchRepository Repository, repository book.Conditio
 }
 
 func (writer *SeriesMappingWriter) Write(ctx context.Context, items []*Mapped) error {
-	var series, unsavedSeries []*book.Series
 	for _, item := range items {
-		if item.pair.Second.ID == 0 {
-			unsavedSeries = append(unsavedSeries, item.pair.Second)
-		} else {
-			series = append(series, item.pair.Second)
+		bok, norTitle := item.pair.First, item.pair.Second
+
+		var seriesISBN string
+		var matchedSeries *book.Series
+
+		mapper, _ := book.NewOriginalKeyMapper(book.SiteNLGO)
+		if isbnAny, ok := mapper.Get(bok.OriginalData[book.SiteNLGO], book.OriginalKeySeriesISBN); ok {
+			seriesISBN = isbnAny.(string)
+			if series := writer.seriesRepository.Get(ctx, seriesISBN); len(series) > 0 {
+				matchedSeries = series[0]
+			}
 		}
-	}
 
-	savedSeries, err := writer.seriesRepository.Save(ctx, unsavedSeries)
-	if err != nil {
-		return err
-	}
-	series = append(series, savedSeries...)
+		if matchedSeries == nil {
+			series := writer.seriesRepository.TitleFullTextSearch(ctx, norTitle)
+			if len(series) > 0 {
+				matchedSeries = series[0].First
+			}
+		}
 
-	seriesMap := make(map[uint]*book.Series)
-	for _, s := range series {
-		seriesMap[s.ID] = s
-	}
+		if matchedSeries == nil {
+			if seriesISBN != "" {
+				matchedSeries = &book.Series{ISBN: &seriesISBN, Name: norTitle}
+			} else {
+				matchedSeries = &book.Series{Name: norTitle}
+			}
+			if _, err := writer.seriesRepository.Save(ctx, []*book.Series{matchedSeries}); err != nil {
+				return err
+			}
+		}
 
-	for _, item := range items {
-		bok := item.pair.First
-		bok.Series = seriesMap[item.pair.Second.ID]
-		if err = writer.repository.Update(ctx, bok); err != nil {
+		bok.Series = matchedSeries
+		if err := writer.repository.Update(ctx, bok); err != nil {
 			return err
 		}
 		item.batch.Status = StatusCompleted
 	}
 
-	batchMap := make(map[uint]*Batch)
+	batchSet := make(map[uint]*Batch)
 	for _, item := range items {
-		if _, ok := batchMap[item.batch.ID]; !ok {
-			batchMap[item.batch.ID] = item.batch
+		if _, ok := batchSet[item.batch.ID]; !ok {
+			batchSet[item.batch.ID] = item.batch
 		}
 	}
 
 	var errArr []error
-	for _, batch := range batchMap {
-		if err = writer.batchRepository.Update(ctx, batch); err != nil {
+	for _, batch := range batchSet {
+		if err := writer.batchRepository.Update(ctx, batch); err != nil {
 			errArr = append(errArr, err)
 		}
 	}

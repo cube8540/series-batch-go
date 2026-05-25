@@ -2,17 +2,41 @@ package main
 
 import (
 	"context"
+	"flag"
+	"fmt"
 	"series-batch-go/internal/batch"
 	"series-batch-go/internal/book"
 	"series-batch-go/internal/config"
 	"series-batch-go/internal/config/db"
 	"series-batch-go/internal/config/log"
 	"series-batch-go/internal/schedule"
+	"strings"
 
+	"github.com/google/uuid"
 	"google.golang.org/genai"
 )
 
+type batchName string
+
+const (
+	batchNameSeriesNormalize batchName = "SERIES_NORMALIZE"
+	batchNameBatchMonitor    batchName = "BATCH_MONITOR"
+	batchNameSeriesMapping   batchName = "SERIES_MAPPING"
+)
+
+type Task interface {
+	Run(context.Context, schedule.JobParameter) error
+}
+
 func main() {
+	inputBatchName := flag.String("batch", "", "실행시킬 배치명")
+	flag.Parse()
+
+	name, err := newBatchName(*inputBatchName)
+	if err != nil {
+		panic(err)
+	}
+
 	ctx, conf := context.Background(), config.Read()
 	log.NewLogger(conf.Logger)
 
@@ -22,64 +46,91 @@ func main() {
 		_ = sql.Close()
 	}()
 
+	ai, err := newAI(ctx, conf.Gemini.APIKey)
+	if err != nil {
+		panic(err)
+	}
+	instService := batch.NewJobService(batch.NewGormJobRepository(postgres))
+
+	var task Task
+	switch name {
+	case batchNameSeriesNormalize:
+		bookRepository := book.NewGormRepository(postgres)
+		batchRepository := batch.NewGormRepository(postgres)
+
+		reader := batch.NewSeriesClassifierReader(bookRepository)
+		writer := batch.NewSeriesClassifierWriter(ai, batchRepository)
+		writer.GenerateDisplayName = func() string {
+			uid, _ := uuid.NewRandom()
+			return uid.String()
+		}
+
+		inst, err := schedule.NewJobBuilder[*book.Book](string(name)).
+			WithReader(reader).
+			WithWriter(writer).
+			Build()
+		if err != nil {
+			panic(err)
+		}
+		task = schedule.NewExecutor(inst, instService)
+	case batchNameBatchMonitor:
+		batchRepository := batch.NewGormRepository(postgres)
+		reader := batch.NewSeriesMonitorReader(ai, batchRepository)
+		writer := batch.NewSeriesMonitorWriter(batchRepository)
+
+		inst, err := schedule.NewJobBuilder[*batch.Batch](string(name)).
+			WithReader(reader).
+			WithWriter(writer).
+			Build()
+		if err != nil {
+			panic(err)
+		}
+		task = schedule.NewExecutor(inst, instService)
+	case batchNameSeriesMapping:
+		bookRepository := book.NewGormRepository(postgres)
+		seriesRepository := book.NewSeriesGormRepository(postgres)
+		batchRepository := batch.NewGormRepository(postgres)
+
+		reader := batch.NewSeriesMapperReader(ai, bookRepository, seriesRepository, batchRepository)
+		writer := batch.NewSeriesMappingWriter(batchRepository, bookRepository, seriesRepository)
+
+		inst, err := schedule.NewJobBuilder[*batch.Mapped](string(name)).
+			WithReader(reader).
+			WithWriter(writer).
+			Build()
+		if err != nil {
+			panic(err)
+		}
+		task = schedule.NewExecutor(inst, instService)
+	}
+
+	params := make(map[string]string)
+	if err = task.Run(ctx, params); err != nil {
+		panic(err)
+	}
+}
+
+func newBatchName(name string) (batchName, error) {
+	name = strings.ToUpper(name)
+	switch name {
+	case "SERIES_NORMALIZE":
+		return batchNameSeriesNormalize, nil
+	case "BATCH_MONITOR":
+		return batchNameBatchMonitor, nil
+	case "SERIES_MAPPING":
+		return batchNameSeriesMapping, nil
+	default:
+		return "", fmt.Errorf("unknown batch name: %s", name)
+	}
+}
+
+func newAI(ctx context.Context, key string) (batch.AI, error) {
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey: conf.Gemini.APIKey,
+		APIKey: key,
 	})
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("failed to create gemini client: %w", err)
 	}
 
-	gemini := batch.NewGemini(conf.Gemini.APIKey, client, batch.ModelGemini3_5Flash)
-
-	//bookRepository := book.NewGormRepository(postgres)
-	//batchRepository := batch.NewGormRepository(postgres)
-	//
-	//reader := batch.NewSeriesClassifierReader(bookRepository)
-	//writer := batch.NewSeriesClassifierWriter(gemini, batchRepository)
-	//writer.GenerateDisplayName = func() string {
-	//	uid, _ := uuid.NewRandom()
-	//	return uid.String()
-	//}
-	//
-	//jobInstance, err := schedule.NewJobBuilder[*book.Book]("SERIES_NORMALIZE").
-	//	WithReader(reader).
-	//	WithWriter(writer).
-	//	Build()
-	//if err != nil {
-	//	panic(err)
-	//}
-
-	//batchRepository := batch.NewGormRepository(postgres)
-	//reader := batch.NewSeriesMonitorReader(gemini, batchRepository)
-	//writer := batch.NewSeriesMonitorWriter(batchRepository)
-	//
-	//jobInstance, err := schedule.NewJobBuilder[*batch.Batch]("BATCH_MONITOR").
-	//	WithReader(reader).
-	//	WithWriter(writer).
-	//	Build()
-	//if err != nil {
-	//	panic(err)
-	//}
-
-	bookRepository := book.NewGormRepository(postgres)
-	seriesRepository := book.NewSeriesGormRepository(postgres)
-	batchRepository := batch.NewGormRepository(postgres)
-	reader := batch.NewSeriesMapperReader(gemini, bookRepository, seriesRepository, batchRepository)
-	writer := batch.NewSeriesMappingWriter(batchRepository, bookRepository, seriesRepository)
-
-	jobInstance, err := schedule.NewJobBuilder[*batch.Mapped]("SERIES_MAPPING").
-		WithReader(reader).
-		WithWriter(writer).
-		Build()
-	if err != nil {
-		panic(err)
-	}
-
-	instService := batch.NewJobService(batch.NewGormJobRepository(postgres))
-	executor := schedule.NewExecutor(jobInstance, instService)
-
-	parameter := make(map[string]string)
-	if err = executor.Run(ctx, parameter); err != nil {
-		panic(err)
-	}
+	return batch.NewGemini(key, client, batch.ModelGemini3_5Flash), nil
 }

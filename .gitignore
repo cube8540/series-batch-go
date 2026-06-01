@@ -1,1 +1,5 @@
 /config
+
+.idea/db-forest-config.xml
+.idea/go.imports.xml
+.idea/inspectionProfiles/Project_Default.xml

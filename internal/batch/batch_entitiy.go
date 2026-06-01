@@ -38,7 +38,7 @@ type batchEntity struct {
 	Type       string
 	Status     string
 
-	Targets []targetEntity `gorm:"foreignKey:BatchID"`
+	Targets []targetEntity `gorm:"foreignKey:BatchID;"`
 
 	RegisteredAt time.Time
 	ModifiedAt   *time.Time
@@ -50,6 +50,10 @@ func newBatchEntity(batch *Batch) *batchEntity {
 		Type:         string(batch.Type),
 		Status:       string(batch.Status),
 		RegisteredAt: batch.RegisteredAt,
+	}
+
+	if batch.ID != 0 {
+		entity.ID = batch.ID
 	}
 
 	if batch.Targets != nil {

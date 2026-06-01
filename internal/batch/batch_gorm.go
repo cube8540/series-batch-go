@@ -3,6 +3,7 @@ package batch
 import (
 	"context"
 	"series-batch-go/internal/config/log"
+	"slices"
 	"time"
 
 	"gorm.io/gorm"
@@ -15,6 +16,20 @@ type GormRepository struct {
 
 func NewGormRepository(db *gorm.DB) *GormRepository {
 	return &GormRepository{db: db}
+}
+
+func (repo GormRepository) Get(ctx context.Context, ID ...uint) []*Batch {
+	var batches []*Batch
+	for chunk := range slices.Chunk(ID, 100) {
+		entities, err := gorm.G[*batchEntity](repo.db.Unscoped()).Preload("Targets", nil).Where("id IN (?)", chunk).Find(ctx)
+		if err != nil {
+			log.Sugared().Errorf("error occurred when finding batch(%v): %v", chunk, err)
+		}
+		for _, entity := range entities {
+			batches = append(batches, entity.domain())
+		}
+	}
+	return batches
 }
 
 func (repo GormRepository) GetByStatus(ctx context.Context, limit int, status ...Status) []*Batch {
@@ -59,6 +74,25 @@ func (repo GormRepository) Update(ctx context.Context, batch *Batch) error {
 
 	_, err := gorm.G[*batchEntity](repo.db).Omit("Targets").Where("id = ?", batch.ID).Updates(ctx, entity)
 	return err
+}
+
+func (repo GormRepository) Remove(ctx context.Context, batches []*Batch) error {
+	return repo.db.Transaction(func(tx *gorm.DB) error {
+		var id []uint
+		for _, batch := range batches {
+			id = append(id, batch.ID)
+		}
+
+		if _, err := gorm.G[*targetEntity](tx).Where("batch_id IN (?)", id).Delete(ctx); err != nil {
+			return err
+		}
+
+		if _, err := gorm.G[*batchEntity](tx).Where("id IN (?)", id).Delete(ctx); err != nil {
+			return err
+		}
+
+		return nil
+	})
 }
 
 type GormJobRepository struct {

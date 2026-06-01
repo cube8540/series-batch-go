@@ -6,6 +6,16 @@ import (
 	"time"
 )
 
+type ResourceKey string
+
+const SharedResourceKey = "batch/schedule/shared"
+
+type SharedResource map[string]any
+
+func newSharedResource() SharedResource {
+	return make(map[string]any)
+}
+
 type Executor[T any] struct {
 	job *Job[T]
 
@@ -37,6 +47,8 @@ func (exec *Executor[T]) Run(ctx context.Context, params JobParameter) error {
 		exec.eventDispatcher.On(ctx, NewJobEventCancelled(exec.job.name, exec.clock()))
 		return err
 	}
+
+	ctx = context.WithValue(ctx, SharedResourceKey, newSharedResource())
 
 	inst, err := exec.repository.Get(ctx, exec.job.name)
 	if err != nil {
@@ -75,5 +87,16 @@ func (exec *Executor[T]) Run(ctx context.Context, params JobParameter) error {
 	}
 
 	exec.eventDispatcher.On(ctx, NewJobEventCompleted(exec.job.name, exec.clock()))
+	return nil
+}
+
+func GetSharedResource(ctx context.Context) SharedResource {
+	shared := ctx.Value(SharedResourceKey)
+	if shared == nil {
+		return nil
+	}
+	if resource, ok := shared.(SharedResource); ok {
+		return resource
+	}
 	return nil
 }

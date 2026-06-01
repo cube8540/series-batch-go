@@ -18,7 +18,8 @@ import (
 )
 
 const (
-	ModelGemini3_5Flash = "gemini-3.5-flash"
+	ModelGemini3_5Flash     = "gemini-3.5-flash"
+	ModelGemini3_1FlashLite = "gemini-3.1-flash-lite"
 )
 
 type Gemini struct {

@@ -3,9 +3,11 @@ package batch
 import "context"
 
 type Repository interface {
+	Get(ctx context.Context, ID ...uint) []*Batch
 	GetByStatus(ctx context.Context, limit int, status ...Status) []*Batch
 	Save(ctx context.Context, batches []*Batch) ([]*Batch, error)
 	Update(ctx context.Context, batch *Batch) error
+	Remove(ctx context.Context, batches []*Batch) error
 }
 
 type JobRepository interface {

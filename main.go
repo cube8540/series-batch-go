@@ -22,6 +22,8 @@ const (
 	batchNameSeriesNormalize batchName = "SERIES_NORMALIZE"
 	batchNameBatchMonitor    batchName = "BATCH_MONITOR"
 	batchNameSeriesMapping   batchName = "SERIES_MAPPING"
+	batchNameCleanup         batchName = "CLEANUP"
+	batchNameRecovery        batchName = "RECOVERY"
 )
 
 type Task interface {
@@ -102,6 +104,44 @@ func main() {
 			panic(err)
 		}
 		task = schedule.NewExecutor(inst, instService)
+	case batchNameCleanup:
+		batchRepository := batch.NewGormRepository(postgres)
+
+		reader := batch.NewCleanupBatchReader(batchRepository)
+		writer := batch.NewCleanupBatchWriter(batchRepository)
+
+		inst, err := schedule.NewJobBuilder[*batch.Batch](string(name)).
+			WithReader(reader).
+			WithWriter(writer).
+			Build()
+		if err != nil {
+			panic(err)
+		}
+		task = schedule.NewExecutor(inst, instService)
+	case batchNameRecovery:
+		batchRepository := batch.NewGormRepository(postgres)
+		bookRepository := book.NewGormRepository(postgres)
+
+		reader := batch.NewRecoveryBatchReader(batchRepository, bookRepository)
+		writer := batch.NewSeriesClassifierWriter(ai, batchRepository)
+		writer.GenerateDisplayName = func() string {
+			uid, _ := uuid.NewRandom()
+			return uid.String()
+		}
+
+		inst, err := schedule.NewJobBuilder[*book.Book](string(name)).
+			WithReader(reader).
+			WithWriter(writer).
+			WithChunkSize(1000).
+			Build()
+		if err != nil {
+			panic(err)
+		}
+
+		executor := schedule.NewExecutor(inst, instService)
+		executor.AddListener(batch.NewRecoveryCompletedEventListener(batchRepository))
+
+		task = executor
 	}
 
 	params := make(map[string]string)
@@ -119,6 +159,10 @@ func newBatchName(name string) (batchName, error) {
 		return batchNameBatchMonitor, nil
 	case "SERIES_MAPPING":
 		return batchNameSeriesMapping, nil
+	case "CLEANUP":
+		return batchNameCleanup, nil
+	case "RECOVERY":
+		return batchNameRecovery, nil
 	default:
 		return "", fmt.Errorf("unknown batch name: %s", name)
 	}
@@ -132,5 +176,5 @@ func newAI(ctx context.Context, key string) (batch.AI, error) {
 		return nil, fmt.Errorf("failed to create gemini client: %w", err)
 	}
 
-	return batch.NewGemini(key, client, batch.ModelGemini3_5Flash), nil
+	return batch.NewGemini(key, client, batch.ModelGemini3_1FlashLite), nil
 }

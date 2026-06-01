@@ -49,9 +49,32 @@ func (repo *GormRepository) Update(ctx context.Context, book *Book) error {
 }
 
 func (repo *GormRepository) GetUnorganized(ctx context.Context, limit int) []*Book {
-	entities, err := gorm.G[*bookEntity](repo.db.Unscoped()).Where("series_id is null").Order("id desc").Limit(limit).Find(ctx)
+	type raw struct {
+		ID    uint
+		ISBN  string
+		Title string
+	}
+	sql := `
+		select id, isbn, title
+		from books.book book
+		where not exists (select 1 from books.series_batch_target where book_id = book.id) and
+			  series_id is null
+		order by id desc
+		limit ?
+	`
+	raws, err := gorm.G[raw](repo.db).Raw(sql, limit).Find(ctx)
 	if err != nil {
 		log.Sugared().Errorf("error occurred when finding unorganized books: %v", err)
+	}
+
+	var entities []*bookEntity
+	for _, row := range raws {
+		entity := bookEntity{
+			ID:    row.ID,
+			ISBN:  row.ISBN,
+			Title: row.Title,
+		}
+		entities = append(entities, &entity)
 	}
 	return repo.fillOriginalData(ctx, entities)
 }

@@ -3,6 +3,7 @@ package batch
 import (
 	"context"
 	"series-batch-go/internal/book"
+	"series-batch-go/internal/pkg/collections"
 	"series-batch-go/internal/schedule"
 )
 
@@ -23,7 +24,7 @@ func NewRecoveryBatchReader(batchRepository Repository, bookRepository book.Repo
 func (reader RecoveryBatchReader) Read(ctx context.Context, _ schedule.JobParameter) ([]*book.Book, error) {
 	batches := reader.batchRepository.GetByStatus(ctx, 100, StatusFailed)
 
-	targets := make(map[uint]interface{})
+	targets := make(map[uint]any)
 	var batchID []uint
 	for _, batch := range batches {
 		for _, target := range batch.Targets {
@@ -36,10 +37,9 @@ func (reader RecoveryBatchReader) Read(ctx context.Context, _ schedule.JobParame
 		shared[RecoveryBatchNames] = batchID
 	}
 
-	var targetID []uint
-	for ID, _ := range targets {
-		targetID = append(targetID, ID)
-	}
+	targetID := collections.MapToSlice(targets, func(k uint, _ any) uint {
+		return k
+	})
 	return reader.bookRepository.Get(ctx, targetID...), nil
 }
 

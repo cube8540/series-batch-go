@@ -9,18 +9,19 @@ func Find[E any](arr []E, predicate func(E) bool) int {
 	return -1
 }
 
-func MapAllValues[K comparable, V any](m map[K]V) []V {
-	var values []V
-	for _, v := range m {
-		values = append(values, v)
+func Map[K comparable, V any](arr []V, mapper func(V) K) map[K]V {
+	m := make(map[K]V)
+	for _, v := range arr {
+		k := mapper(v)
+		m[k] = v
 	}
-	return values
+	return m
 }
 
-func ToAnySlices[T any](slice []T) []any {
-	var result []any
-	for _, v := range slice {
-		result = append(result, v)
+func MapToSlice[K comparable, V any, E any](m map[K]V, extract func(K, V) E) []E {
+	var slice []E
+	for k, v := range m {
+		slice = append(slice, extract(k, v))
 	}
-	return result
+	return slice
 }

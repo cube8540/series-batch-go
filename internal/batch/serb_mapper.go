@@ -50,10 +50,9 @@ func (reader *SeriesMappingReader) Read(ctx context.Context, _ schedule.JobParam
 		}
 
 		books := reader.repository.Get(ctx, batch.GetTargetID()...)
-		bookMap := make(map[uint]*book.Book)
-		for _, b := range books {
-			bookMap[b.ID] = b
-		}
+		bookMap := collections.Map(books, func(b *book.Book) uint {
+			return b.ID
+		})
 
 		for _, batchResult := range batchResults {
 			idx := collections.Find(batch.Targets, func(e Target) bool {
@@ -95,8 +94,7 @@ func (writer *SeriesMappingWriter) Write(ctx context.Context, items []*Mapped) e
 
 		mapper, _ := book.NewOriginalKeyMapper(book.SiteNLGO)
 		if isbnAny, ok := mapper.Get(bok.OriginalData[book.SiteNLGO], book.OriginalKeySeriesISBN); ok {
-			seriesISBN = isbnAny.(string)
-			if series := writer.seriesRepository.Get(ctx, seriesISBN); len(series) > 0 {
+			if series := writer.seriesRepository.Get(ctx, isbnAny.(string)); len(series) > 0 {
 				matchedSeries = series[0]
 			}
 		}
